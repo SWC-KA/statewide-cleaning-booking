@@ -1,18 +1,18 @@
-const credentialsPath = path.join(process.cwd(), "credentials.json");
+require("dotenv").config();
 
-if (process.env.GOOGLE_CREDENTIALS) {
-  fs.writeFileSync(credentialsPath, process.env.GOOGLE_CREDENTIALS);
-}
-
+const fs = require("fs");
+const path = require("path");
 const express = require("express");
 const cors = require("cors");
 const { google } = require("googleapis");
 const https = require("https");
-require("dotenv").config();
-const fs = require("fs");
-const path = require("path");
 const nodemailer = require("nodemailer");
 
+const credentialsPath = path.join(__dirname, "credentials.json");
+
+if (process.env.GOOGLE_CREDENTIALS) {
+  fs.writeFileSync(credentialsPath, process.env.GOOGLE_CREDENTIALS, "utf8");
+}
 
 const app = express();
 const PORT = process.env.PORT || 5000;
