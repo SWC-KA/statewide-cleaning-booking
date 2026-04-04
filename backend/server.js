@@ -662,7 +662,16 @@ app.get("/", (req, res) => {
   res.send("Booking API is running.");
 });
 
+
 async function sendEmailsSMTP(bookingData) {
+  console.log("SMTP env check:", {
+  SMTP_HOST: process.env.SMTP_HOST,
+  SMTP_PORT: process.env.SMTP_PORT,
+  SMTP_SECURE: process.env.SMTP_SECURE,
+  SMTP_USER: process.env.SMTP_USER,
+  SMTP_PASS_EXISTS: !!process.env.SMTP_PASS,
+  BUSINESS_EMAIL: process.env.BUSINESS_EMAIL,
+});
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT || 587),
@@ -873,7 +882,7 @@ app.post("/api/book", async (req, res) => {
 };
 
 setImmediate(async () => {
-  console.log("Starting background booking tasks.");
+  console.log("Starting background booking tasks...");
 
   const emailPayload = {
     firstName,
@@ -893,39 +902,34 @@ setImmediate(async () => {
     customerServiceSummary,
   };
 
-  const tasks = [
-    {
-      name: "smtp emails",
-      run: () => sendEmailsSMTP(emailPayload),
-    },
-    {
-      name: "append to sheet",
-      run: () => appendBookingToSheet(bookingData),
-    },
-    {
-      name: "create calendar event",
-      run: () => createCalendarEvent(bookingData),
-    },
-  ];
+  try {
+    await sendEmailsSMTP(emailPayload);
+    console.log("smtp emails succeeded.");
+  } catch (error) {
+    console.error("smtp emails failed:", error?.message || error);
+    if (error?.stack) console.error(error.stack);
+  }
 
-  for (const task of tasks) {
-    try {
-      await task.run();
-      console.log(`${task.name} succeeded.`);
-    } catch (error) {
-      console.error(`${task.name} failed:`, error?.message || error);
-      if (error?.response?.data) {
-        console.error(`${task.name} response data:`, error.response.data);
-      }
-    }
+  try {
+    await appendBookingToSheet(bookingData);
+    console.log("Sheets env check:", {
+  GOOGLE_SHEET_ID: process.env.GOOGLE_SHEET_ID,
+});
+    console.log("append to sheet succeeded.");
+  } catch (error) {
+    console.error("append to sheet failed:", error?.message || error);
+    if (error?.stack) console.error(error.stack);
+  }
+
+  try {
+    await createCalendarEvent(bookingData);
+    console.log("create calendar event succeeded.");
+  } catch (error) {
+    console.error("create calendar event failed:", error?.message || error);
+    if (error?.stack) console.error(error.stack);
   }
 
   console.log("Background booking tasks finished.");
-});
-
-return res.json({
-  success: true,
-  message: "Booking request submitted successfully.",
 });
     
 
