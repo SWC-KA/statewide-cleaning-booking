@@ -876,41 +876,43 @@ setImmediate(async () => {
   try {
     console.log("Starting background booking tasks...");
 
+    const emailPayload = {
+      firstName,
+      lastName,
+      phone,
+      email,
+      address,
+      city,
+      zip,
+      propertyType,
+      notes,
+      preferredDate,
+      preferredTime,
+      estimate,
+      estimatedHours,
+      servicesText,
+      customerServiceSummary,
+    };
+
     const results = await Promise.allSettled([
-await sendEmailsSMTP({
-  firstName,
-  lastName,
-  phone,
-  email,
-  address,
-  city,
-  zip,
-  propertyType,
-  notes,
-  preferredDate,
-  preferredTime,
-  estimate,
-  estimatedHours,
-  servicesText,
-  customerServiceSummary,
-}),
-  appendBookingToSheet(bookingData),
-  createCalendarEvent(bookingData),
-]);
+      sendEmailsSMTP(emailPayload),
+      appendBookingToSheet(bookingData),
+      createCalendarEvent(bookingData),
+    ]);
 
-   const taskNames = [
-  "apps script emails",
-  "append to sheet",
-  "create calendar event",
-];
+    const taskNames = [
+      "smtp emails",
+      "append to sheet",
+      "create calendar event",
+    ];
 
-results.forEach((result, index) => {
-  if (result.status === "rejected") {
-    console.error(`${taskNames[index]} failed:`, result.reason);
-  } else {
-    console.log(`${taskNames[index]} succeeded.`);
-  }
-});
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        console.error(`${taskNames[index]} failed:`, result.reason);
+      } else {
+        console.log(`${taskNames[index]} succeeded.`);
+      }
+    });
 
     console.log("Background booking tasks finished.");
   } catch (backgroundError) {
