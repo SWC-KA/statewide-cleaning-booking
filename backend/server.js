@@ -1,3 +1,12 @@
+import fs from "fs";
+import path from "path";
+
+const credentialsPath = path.join(process.cwd(), "credentials.json");
+
+if (process.env.GOOGLE_CREDENTIALS) {
+  fs.writeFileSync(credentialsPath, process.env.GOOGLE_CREDENTIALS);
+}
+
 const express = require("express");
 const cors = require("cors");
 const { google } = require("googleapis");
