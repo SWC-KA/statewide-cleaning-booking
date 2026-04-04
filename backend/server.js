@@ -873,51 +873,54 @@ app.post("/api/book", async (req, res) => {
 };
 
 setImmediate(async () => {
-  try {
-    console.log("Starting background booking tasks.");
+  console.log("Starting background booking tasks.");
 
-    const emailPayload = {
-      firstName,
-      lastName,
-      phone,
-      email,
-      address,
-      city,
-      zip,
-      propertyType,
-      notes,
-      preferredDate,
-      preferredTime,
-      estimate,
-      estimatedHours,
-      servicesText,
-      customerServiceSummary,
-    };
+  const emailPayload = {
+    firstName,
+    lastName,
+    phone,
+    email,
+    address,
+    city,
+    zip,
+    propertyType,
+    notes,
+    preferredDate,
+    preferredTime,
+    estimate,
+    estimatedHours,
+    servicesText,
+    customerServiceSummary,
+  };
 
-    const results = await Promise.allSettled([
-      sendEmailsSMTP(emailPayload),
-      appendBookingToSheet(bookingData),
-      createCalendarEvent(bookingData),
-    ]);
+  const tasks = [
+    {
+      name: "smtp emails",
+      run: () => sendEmailsSMTP(emailPayload),
+    },
+    {
+      name: "append to sheet",
+      run: () => appendBookingToSheet(bookingData),
+    },
+    {
+      name: "create calendar event",
+      run: () => createCalendarEvent(bookingData),
+    },
+  ];
 
-    const taskNames = [
-      "smtp emails",
-      "append to sheet",
-      "create calendar event",
-    ];
-
-    results.forEach((result, index) => {
-      if (result.status === "rejected") {
-        console.error(`${taskNames[index]} failed:`, result.reason);
-      } else {
-        console.log(`${taskNames[index]} succeeded.`);
+  for (const task of tasks) {
+    try {
+      await task.run();
+      console.log(`${task.name} succeeded.`);
+    } catch (error) {
+      console.error(`${task.name} failed:`, error?.message || error);
+      if (error?.response?.data) {
+        console.error(`${task.name} response data:`, error.response.data);
       }
-    });
-
-    console.log("Background booking tasks finished.");
-  } catch (backgroundError) {
-    console.error("Background booking tasks failed:", backgroundError);
+    }
   }
+
+  console.log("Background booking tasks finished.");
 });
 
 return res.json({
