@@ -911,15 +911,15 @@ setImmediate(async () => {
   }
 
   try {
-    await appendBookingToSheet(bookingData);
-    console.log("Sheets env check:", {
-  GOOGLE_SHEET_ID: process.env.GOOGLE_SHEET_ID,
-});
-    console.log("append to sheet succeeded.");
-  } catch (error) {
-    console.error("append to sheet failed:", error?.message || error);
-    if (error?.stack) console.error(error.stack);
-  }
+  console.log("Sheets env check:", {
+    GOOGLE_SHEET_ID: process.env.GOOGLE_SHEET_ID,
+  });
+  await appendBookingToSheet(bookingData);
+  console.log("append to sheet succeeded.");
+} catch (error) {
+  console.error("append to sheet failed:", error?.message || error);
+  if (error?.stack) console.error(error.stack);
+}
 
   try {
     await createCalendarEvent(bookingData);
@@ -931,7 +931,11 @@ setImmediate(async () => {
 
   console.log("Background booking tasks finished.");
 });
-    
+
+return res.json({
+  success: true,
+  message: "Booking request received.",
+});
 
    
   } catch (error) {
