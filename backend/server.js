@@ -9,6 +9,7 @@ const https = require("https");
 const nodemailer = require("nodemailer");
 
 const credentialsPath = path.join(__dirname, "credentials.json");
+console.log("BACKEND VERSION CHECK - 2026-04-04 A");
 
 if (process.env.GOOGLE_CREDENTIALS) {
   fs.writeFileSync(credentialsPath, process.env.GOOGLE_CREDENTIALS, "utf8");
@@ -665,13 +666,14 @@ app.get("/", (req, res) => {
 
 async function sendEmailsSMTP(bookingData) {
   console.log("SMTP env check:", {
-  SMTP_HOST: process.env.SMTP_HOST,
-  SMTP_PORT: process.env.SMTP_PORT,
-  SMTP_SECURE: process.env.SMTP_SECURE,
-  SMTP_USER: process.env.SMTP_USER,
-  SMTP_PASS_EXISTS: !!process.env.SMTP_PASS,
-  BUSINESS_EMAIL: process.env.BUSINESS_EMAIL,
-});
+    SMTP_HOST: process.env.SMTP_HOST,
+    SMTP_PORT: process.env.SMTP_PORT,
+    SMTP_SECURE: process.env.SMTP_SECURE,
+    SMTP_USER: process.env.SMTP_USER,
+    SMTP_PASS_EXISTS: !!process.env.SMTP_PASS,
+    BUSINESS_EMAIL: process.env.BUSINESS_EMAIL,
+  });
+
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT || 587),
@@ -680,7 +682,13 @@ async function sendEmailsSMTP(bookingData) {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
   });
+
+  await transporter.verify();
+  console.log("SMTP connection verified.");
 
   const businessEmail = process.env.BUSINESS_EMAIL;
   const businessName = process.env.BUSINESS_NAME || "Statewide Cleaning, Inc.";
@@ -882,7 +890,7 @@ app.post("/api/book", async (req, res) => {
 };
 
 setImmediate(async () => {
-  console.log("Starting background booking tasks...");
+  console.log("BACKGROUND ORDER CHECK - SHEETS FIRST");
 
   const emailPayload = {
     firstName,
@@ -903,29 +911,37 @@ setImmediate(async () => {
   };
 
   try {
-    await sendEmailsSMTP(emailPayload);
-    console.log("smtp emails succeeded.");
+    console.log("STEP 1 - before sheets");
+    console.log("Sheets env check:", {
+      GOOGLE_SHEET_ID: process.env.GOOGLE_SHEET_ID,
+    });
+    await appendBookingToSheet(bookingData);
+    console.log("append to sheet succeeded.");
   } catch (error) {
-    console.error("smtp emails failed:", error?.message || error);
+    console.error("append to sheet failed:", error?.message || error);
     if (error?.stack) console.error(error.stack);
   }
 
   try {
-  console.log("Sheets env check:", {
-    GOOGLE_SHEET_ID: process.env.GOOGLE_SHEET_ID,
-  });
-  await appendBookingToSheet(bookingData);
-  console.log("append to sheet succeeded.");
-} catch (error) {
-  console.error("append to sheet failed:", error?.message || error);
-  if (error?.stack) console.error(error.stack);
-}
-
-  try {
+    console.log("STEP 2 - before calendar");
     await createCalendarEvent(bookingData);
     console.log("create calendar event succeeded.");
   } catch (error) {
     console.error("create calendar event failed:", error?.message || error);
+    if (error?.stack) console.error(error.stack);
+  }
+
+  try {
+    console.log("STEP 3 - before email");
+    await Promise.race([
+      sendEmailsSMTP(emailPayload),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("SMTP timeout after 15 seconds")), 15000)
+      ),
+    ]);
+    console.log("smtp emails succeeded.");
+  } catch (error) {
+    console.error("smtp emails failed:", error?.message || error);
     if (error?.stack) console.error(error.stack);
   }
 
