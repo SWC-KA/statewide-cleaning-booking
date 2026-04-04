@@ -1,6 +1,3 @@
-import fs from "fs";
-import path from "path";
-
 const credentialsPath = path.join(process.cwd(), "credentials.json");
 
 if (process.env.GOOGLE_CREDENTIALS) {
@@ -346,13 +343,12 @@ function formatServices(services = []) {
 
 
 const auth = new google.auth.GoogleAuth({
- keyFile: path.join(__dirname, "credentials.json"),
+  keyFile: credentialsPath,
   scopes: [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/calendar",
   ],
 });
-
 app.post("/api/best-fit", async (req, res) => {
   try {
     const { address, city, zip } = req.body;
