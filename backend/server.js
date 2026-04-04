@@ -874,7 +874,7 @@ app.post("/api/book", async (req, res) => {
 
 setImmediate(async () => {
   try {
-    console.log("Starting background booking tasks...");
+    console.log("Starting background booking tasks.");
 
     const emailPayload = {
       firstName,
