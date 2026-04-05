@@ -674,20 +674,42 @@ async function sendEmailsSMTP(bookingData) {
     BUSINESS_EMAIL: process.env.BUSINESS_EMAIL,
   });
 
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: String(process.env.SMTP_SECURE).toLowerCase() === "true",
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
-  });
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: 587,
+  secure: false,
+  requireTLS: true,
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+  connectionTimeout: 10000,
+  greetingTimeout: 10000,
+  socketTimeout: 15000,
+  tls: {
+    rejectUnauthorized: true,
+  },
+});
 
  console.log("Skipping SMTP verify; attempting send directly.");
+ console.log("About to send business email...");
+await transporter.sendMail({
+  from: `"${businessName}" <${businessEmail}>`,
+  to: businessEmail,
+  replyTo: bookingData.email || businessEmail,
+  subject: businessSubject,
+  text: businessBody,
+});
+console.log("Business email sent.");
+console.log("About to send customer email...");
+await transporter.sendMail({
+  from: `"${businessName}" <${businessEmail}>`,
+  to: bookingData.email,
+  replyTo: businessEmail,
+  subject: customerSubject,
+  text: customerBody,
+});
+console.log("Customer email sent.");
 
   const businessEmail = process.env.BUSINESS_EMAIL;
   const businessName = process.env.BUSINESS_NAME || "Statewide Cleaning, Inc.";
