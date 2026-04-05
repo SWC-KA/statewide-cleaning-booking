@@ -665,6 +665,8 @@ app.get("/", (req, res) => {
 
 
 async function sendEmailsSMTP(bookingData) {
+   const businessEmail = process.env.BUSINESS_EMAIL;
+  const businessName = process.env.BUSINESS_NAME || "Statewide Cleaning, Inc.";
   console.log("SMTP env check:", {
     SMTP_HOST: process.env.SMTP_HOST,
     SMTP_PORT: process.env.SMTP_PORT,
@@ -711,8 +713,7 @@ await transporter.sendMail({
 });
 console.log("Customer email sent.");
 
-  const businessEmail = process.env.BUSINESS_EMAIL;
-  const businessName = process.env.BUSINESS_NAME || "Statewide Cleaning, Inc.";
+ 
 
   const customerName = `${bookingData.firstName || ""} ${bookingData.lastName || ""}`.trim();
 
