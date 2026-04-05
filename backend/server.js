@@ -665,8 +665,9 @@ app.get("/", (req, res) => {
 
 
 async function sendEmailsSMTP(bookingData) {
-   const businessEmail = process.env.BUSINESS_EMAIL;
+  const businessEmail = process.env.BUSINESS_EMAIL;
   const businessName = process.env.BUSINESS_NAME || "Statewide Cleaning, Inc.";
+
   console.log("SMTP env check:", {
     SMTP_HOST: process.env.SMTP_HOST,
     SMTP_PORT: process.env.SMTP_PORT,
@@ -676,44 +677,24 @@ async function sendEmailsSMTP(bookingData) {
     BUSINESS_EMAIL: process.env.BUSINESS_EMAIL,
   });
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: 587,
-  secure: false,
-  requireTLS: true,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-  connectionTimeout: 10000,
-  greetingTimeout: 10000,
-  socketTimeout: 15000,
-  tls: {
-    rejectUnauthorized: true,
-  },
-});
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: 587,
+    secure: false,
+    requireTLS: true,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+    tls: {
+      rejectUnauthorized: true,
+    },
+  });
 
- console.log("Skipping SMTP verify; attempting send directly.");
- console.log("About to send business email...");
-await transporter.sendMail({
-  from: `"${businessName}" <${businessEmail}>`,
-  to: businessEmail,
-  replyTo: bookingData.email || businessEmail,
-  subject: businessSubject,
-  text: businessBody,
-});
-console.log("Business email sent.");
-console.log("About to send customer email...");
-await transporter.sendMail({
-  from: `"${businessName}" <${businessEmail}>`,
-  to: bookingData.email,
-  replyTo: businessEmail,
-  subject: customerSubject,
-  text: customerBody,
-});
-console.log("Customer email sent.");
-
- 
+  console.log("Skipping SMTP verify; attempting send directly.");
 
   const customerName = `${bookingData.firstName || ""} ${bookingData.lastName || ""}`.trim();
 
@@ -772,6 +753,7 @@ ${businessName}
 ${businessEmail}
 `;
 
+  console.log("About to send business email...");
   await transporter.sendMail({
     from: `"${businessName}" <${businessEmail}>`,
     to: businessEmail,
@@ -779,8 +761,10 @@ ${businessEmail}
     subject: businessSubject,
     text: businessBody,
   });
+  console.log("Business email sent.");
 
   if (bookingData.email) {
+    console.log("About to send customer email...");
     await transporter.sendMail({
       from: `"${businessName}" <${businessEmail}>`,
       to: bookingData.email,
@@ -788,9 +772,9 @@ ${businessEmail}
       subject: customerSubject,
       text: customerBody,
     });
+    console.log("Customer email sent.");
   }
 }
-
 app.post("/api/book", async (req, res) => {
   try {
     console.log("Incoming booking request received");
