@@ -687,8 +687,7 @@ async function sendEmailsSMTP(bookingData) {
     socketTimeout: 15000,
   });
 
-  await transporter.verify();
-  console.log("SMTP connection verified.");
+ console.log("Skipping SMTP verify; attempting send directly.");
 
   const businessEmail = process.env.BUSINESS_EMAIL;
   const businessName = process.env.BUSINESS_NAME || "Statewide Cleaning, Inc.";
