@@ -1634,12 +1634,7 @@ const canSubmit =
     value={selectedTime}
     onChange={(e) => setSelectedTime(e.target.value)}
   >
-    {availableTimeWindows.length === 1 &&
-  availableTimeWindows[0] === "Flexible / Best available" && (
-    <p className="form-help">
-      The standard time windows for this date are full. Please choose another date or use Flexible / Best available.
-    </p>
-)}
+  
     {availableTimeWindows.map((window) => (
       <option key={window} value={window}>
         {window}
