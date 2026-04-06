@@ -208,6 +208,86 @@ function getSlotTimes(date, windowLabel) {
   return slotMap[windowLabel] || null;
 }
 
+async function validateRequestedBookingSlot({
+  preferredDate,
+  preferredTime,
+  address,
+  city,
+  zip,
+}) {
+  const client = await auth.getClient();
+  const calendar = google.calendar({ version: "v3", auth: client });
+
+  const slot = getSlotTimes(preferredDate, preferredTime);
+  if (!slot) {
+    throw new Error("Invalid preferred date or time.");
+  }
+
+  const response = await calendar.events.list({
+    calendarId: process.env.GOOGLE_CALENDAR_ID,
+    timeMin: new Date(slot.start).toISOString(),
+    timeMax: new Date(slot.end).toISOString(),
+    singleEvents: true,
+    orderBy: "startTime",
+  });
+
+  const events = response.data.items || [];
+
+  const customerGeo = await geocodeAddress(address, city, zip);
+
+  const slotInfo = await getSlotBookingInfo(
+    calendar,
+    events,
+    preferredDate,
+    preferredTime,
+    customerGeo
+  );
+
+  return {
+    slotInfo,
+    customerGeo,
+  };
+}
+async function validateRequestedBookingSlot({
+  preferredDate,
+  preferredTime,
+  address,
+  city,
+  zip,
+}) {
+  const client = await auth.getClient();
+  const calendar = google.calendar({ version: "v3", auth: client });
+
+  const slot = getSlotTimes(preferredDate, preferredTime);
+  if (!slot) {
+    throw new Error("Invalid preferred date or time.");
+  }
+
+  const response = await calendar.events.list({
+    calendarId: process.env.GOOGLE_CALENDAR_ID,
+    timeMin: new Date(slot.start).toISOString(),
+    timeMax: new Date(slot.end).toISOString(),
+    singleEvents: true,
+    orderBy: "startTime",
+  });
+
+  const events = response.data.items || [];
+
+  const customerGeo = await geocodeAddress(address, city, zip);
+
+  const slotInfo = await getSlotBookingInfo(
+    calendar,
+    events,
+    preferredDate,
+    preferredTime,
+    customerGeo
+  );
+
+  return {
+    slotInfo,
+    customerGeo,
+  };
+}
 async function getSlotBookingInfo(
   calendar,
   events,
@@ -842,17 +922,41 @@ app.post("/api/book", async (req, res) => {
     console.log("About to geocode address...");
 
     let geo = {
-      lat: "",
-      lng: "",
-      formattedAddress: `${address}, ${city}, ${zip}`,
-    };
+  lat: "",
+  lng: "",
+  formattedAddress: `${address}, ${city}, ${zip}`,
+};
 
-    try {
-      geo = await geocodeAddress(address, city, zip);
-      console.log("Geocoded address:", geo);
-    } catch (geoError) {
-      console.error("Geocoding failed:", geoError.message);
-    }
+try {
+  const { slotInfo, customerGeo } = await validateRequestedBookingSlot({
+    preferredDate,
+    preferredTime,
+    address,
+    city,
+    zip,
+  });
+
+  if (!slotInfo.isAvailable) {
+    return res.status(409).json({
+      success: false,
+      message: "That time slot is no longer available. Please choose another time.",
+    });
+  }
+
+  geo = {
+    lat: customerGeo.lat,
+    lng: customerGeo.lng,
+    formattedAddress: customerGeo.formattedAddress,
+  };
+
+  console.log("Booking slot validated:", slotInfo);
+} catch (availabilityError) {
+  console.error("Availability check failed:", availabilityError.message);
+  return res.status(500).json({
+    success: false,
+    message: "Could not verify live availability. Please try again.",
+  });
+}
 
     const bookingData = {
   firstName,
@@ -873,6 +977,7 @@ app.post("/api/book", async (req, res) => {
   lat: geo.lat,
   lng: geo.lng,
 };
+
 
 setImmediate(async () => {
   console.log("BACKGROUND ORDER CHECK - SHEETS FIRST");
