@@ -6,7 +6,7 @@ const express = require("express");
 const cors = require("cors");
 const { google } = require("googleapis");
 const https = require("https");
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 
 const credentialsPath = path.join(__dirname, "credentials.json");
 console.log("BACKEND VERSION CHECK - 2026-04-04 A");
@@ -664,37 +664,11 @@ app.get("/", (req, res) => {
 });
 
 
-async function sendEmailsSMTP(bookingData) {
-  const businessEmail = process.env.BUSINESS_EMAIL;
+async function sendEmailsAPI(bookingData) {
+  const resend = new Resend(process.env.RESEND_API_KEY);
+
+  const businessEmail = process.env.BUSINESS_EMAIL || "onboarding@resend.dev";
   const businessName = process.env.BUSINESS_NAME || "Statewide Cleaning, Inc.";
-
-  console.log("SMTP env check:", {
-    SMTP_HOST: process.env.SMTP_HOST,
-    SMTP_PORT: process.env.SMTP_PORT,
-    SMTP_SECURE: process.env.SMTP_SECURE,
-    SMTP_USER: process.env.SMTP_USER,
-    SMTP_PASS_EXISTS: !!process.env.SMTP_PASS,
-    BUSINESS_EMAIL: process.env.BUSINESS_EMAIL,
-  });
-
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: 587,
-    secure: false,
-    requireTLS: true,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
-    tls: {
-      rejectUnauthorized: true,
-    },
-  });
-
-  console.log("Skipping SMTP verify; attempting send directly.");
 
   const customerName = `${bookingData.firstName || ""} ${bookingData.lastName || ""}`.trim();
 
@@ -753,11 +727,16 @@ ${businessName}
 ${businessEmail}
 `;
 
+  console.log("Email API check:", {
+    hasApiKey: !!process.env.RESEND_API_KEY,
+    businessEmail,
+  });
+
   console.log("About to send business email...");
-  await transporter.sendMail({
-    from: `"${businessName}" <${businessEmail}>`,
-    to: businessEmail,
-    replyTo: bookingData.email || businessEmail,
+  await resend.emails.send({
+    from: businessEmail,
+    to: [businessEmail],
+    reply_to: bookingData.email || businessEmail,
     subject: businessSubject,
     text: businessBody,
   });
@@ -765,10 +744,10 @@ ${businessEmail}
 
   if (bookingData.email) {
     console.log("About to send customer email...");
-    await transporter.sendMail({
-      from: `"${businessName}" <${businessEmail}>`,
-      to: bookingData.email,
-      replyTo: businessEmail,
+    await resend.emails.send({
+      from: businessEmail,
+      to: [bookingData.email],
+      reply_to: businessEmail,
       subject: customerSubject,
       text: customerBody,
     });
@@ -937,19 +916,14 @@ setImmediate(async () => {
     if (error?.stack) console.error(error.stack);
   }
 
-  try {
-    console.log("STEP 3 - before email");
-    await Promise.race([
-      sendEmailsSMTP(emailPayload),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("SMTP timeout after 15 seconds")), 15000)
-      ),
-    ]);
-    console.log("smtp emails succeeded.");
-  } catch (error) {
-    console.error("smtp emails failed:", error?.message || error);
-    if (error?.stack) console.error(error.stack);
-  }
+ try {
+  console.log("STEP 3 - before email");
+  await sendEmailsAPI(emailPayload);
+  console.log("email api succeeded.");
+} catch (error) {
+  console.error("email api failed:", error?.message || error);
+  if (error?.stack) console.error(error.stack);
+}
 
   console.log("Background booking tasks finished.");
 });
