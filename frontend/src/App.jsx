@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
 import logo from "./assets/statewide-logo.png";
 
+const [slotStatus, setSlotStatus] = useState([]);
 const services = [
   {
     id: "carpet-room",
@@ -556,76 +557,90 @@ async function handleSubmit() {
 
   setLoading(true);
 
-  const serviceSummary = selectedServices.map((item) => {
-  const service = serviceMap[item.serviceId];
+  try {
+    const validSelectedServices = selectedServices.filter((item) => {
+      const service = serviceMap[item.serviceId];
+      if (!service) return false;
 
-  let stairsPrice = 0;
-  if (
-    item.addStairs &&
-    (item.serviceId === "carpet-room" || item.serviceId === "carpet-sqft")
-  ) {
-    stairsPrice = Number(item.stairCount || 0) * 7;
-  }
-  // Remove services with 0 quantity
-const validServices = selectedServices.filter(service => {
-  return service.quantity && service.quantity > 0;
-});
+      if (service.pricingType === "pieces") {
+        return Number(item.pieceCount || 0) > 0;
+      }
 
-// Block submission if nothing valid
-if (validServices.length === 0) {
-  alert("Please select at least one service.");
-  return;
-}
+      if (service.pricingType === "stairsOnly") {
+        return Number(item.stairCount || 0) > 0 || item.addLanding;
+      }
 
-// Replace before sending
-bookingData.services = validServices;
+      if (service.id === "rugs-home" || service.id === "rugs-shop") {
+        return item.rugPricingMode === "sqft"
+          ? Number(item.quantity || 0) > 0
+          : Boolean(item.rugSizePreset);
+      }
 
-  const lineTotal = getLineEstimate(item);
+      return Number(item.quantity || 0) > 0;
+    });
 
-  const addOns = [];
-  if (item.addPetTreatment) addOns.push("Pet accident treatment");
-  if (item.addProtection) addOns.push("Fiber protection");
+    if (validSelectedServices.length === 0) {
+      alert("Please select at least one service.");
+      setLoading(false);
+      return;
+    }
 
-  return {
-    service: service?.title || "",
-    details: getServiceLabel(item, service),
-    stairs: item.addStairs ? `${item.stairCount} steps` : "",
-    stairsPrice: stairsPrice ? currency(stairsPrice) : "",
-    addOns: addOns.join(", "),
-    lineTotal: currency(lineTotal),
-  };
-});
+    const serviceSummary = validSelectedServices.map((item) => {
+      const service = serviceMap[item.serviceId];
 
-  const customerServiceSummary = serviceSummary
-    .map((service, index) => {
-      const stairsText = service.stairs ? `\nStairs: ${service.stairs}` : "";
-      const addOnsText = service.addOns ? `\nAdd-ons: ${service.addOns}` : "";
+      let stairsPrice = 0;
+      if (
+        item.addStairs &&
+        (item.serviceId === "carpet-room" || item.serviceId === "carpet-sqft")
+      ) {
+        stairsPrice = Number(item.stairCount || 0) * 7;
+      }
 
-      return `${index + 1}. ${service.service}
+      const lineTotal = getLineEstimate(item);
+
+      const addOns = [];
+      if (item.addPetTreatment) addOns.push("Pet accident treatment");
+      if (item.addProtection) addOns.push("Fiber protection");
+
+      return {
+        service: service?.title || "",
+        details: getServiceLabel(item, service),
+        stairs: item.addStairs ? `${item.stairCount} steps` : "",
+        stairsPrice: stairsPrice ? currency(stairsPrice) : "",
+        addOns: addOns.join(", "),
+        lineTotal: currency(lineTotal),
+      };
+    });
+
+    const customerServiceSummary = serviceSummary
+      .map((service, index) => {
+        const stairsText = service.stairs ? `\nStairs: ${service.stairs}` : "";
+        const addOnsText = service.addOns ? `\nAdd-ons: ${service.addOns}` : "";
+
+        return `${index + 1}. ${service.service}
 Details: ${service.details}
 Price: ${service.lineTotal}${stairsText}${addOnsText}`;
-    })
-    .join("\n\n");
+      })
+      .join("\n\n");
 
-  const payload = {
-    firstName: customer.firstName,
-    lastName: customer.lastName,
-    phone: customer.phone,
-    email: customer.email,
-    address: customer.address,
-    city: customer.city,
-    zip: customer.zip,
-    propertyType: customer.propertyType,
-    notes: customer.serviceNotes,
-    preferredDate: selectedDate,
-    preferredTime: selectedTime,
-    estimate: currency(estimate),
-    estimatedHours,
-    services: serviceSummary,
-    customerServiceSummary,
-  };
+    const payload = {
+      firstName: customer.firstName,
+      lastName: customer.lastName,
+      phone: customer.phone,
+      email: customer.email,
+      address: customer.address,
+      city: customer.city,
+      zip: customer.zip,
+      propertyType: customer.propertyType,
+      notes: customer.serviceNotes,
+      preferredDate: selectedDate,
+      preferredTime: selectedTime,
+      estimate: currency(estimate),
+      estimatedHours,
+      services: serviceSummary,
+      customerServiceSummary,
+    };
 
-  try {
     const response = await fetch(`${API_BASE}/api/book`, {
       method: "POST",
       headers: {
@@ -635,9 +650,26 @@ Price: ${service.lineTotal}${stairsText}${addOnsText}`;
     });
 
     if (response.ok) {
+      setShowReview(false);
       setSubmitSuccess(true);
+      return;
+    }
+
+    const errorData = await response.json().catch(() => ({}));
+
+    if (response.status === 409) {
+      alert(errorData.message || "That time slot is no longer available.");
+
+      await fetchBestFitOptions(selectedDate);
+
+      const refreshedAvailable = slotStatus
+        .filter((slot) => slot.isAvailable)
+        .map((slot) => slot.window);
+
+      if (!refreshedAvailable.includes(selectedTime)) {
+        setSelectedTime("Flexible / Best available");
+      }
     } else {
-      const errorData = await response.json().catch(() => ({}));
       alert(errorData.message || "Something went wrong sending the request.");
     }
   } catch (error) {
@@ -650,8 +682,9 @@ Price: ${service.lineTotal}${stairsText}${addOnsText}`;
 async function fetchBestFitOptions(chosenDate = selectedDate) {
   if (!addressValid) {
     setBestFitOptions([]);
-    setAvailableTimeWindows(timeWindows);
     setBestFitError("");
+    setAvailableTimeWindows(timeWindows);
+    setSlotStatus([]);
     return;
   }
 
@@ -679,51 +712,46 @@ async function fetchBestFitOptions(chosenDate = selectedDate) {
     }
 
     const suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
-    const slotStatus = Array.isArray(data.slotStatus) ? data.slotStatus : [];
+    const status = Array.isArray(data.slotStatus) ? data.slotStatus : [];
 
     setBestFitOptions(suggestions);
+    setSlotStatus(status);
 
-    let available = timeWindows;
+    const available = status
+      .filter((slot) => slot.isAvailable)
+      .map((slot) => slot.window);
 
-    if (slotStatus.length > 0) {
-      available = slotStatus
-        .filter((slot) => slot.isAvailable)
-        .map((slot) => slot.window);
+    const nextAvailable = available.length
+      ? [...available, ...(available.includes("Flexible / Best available") ? [] : ["Flexible / Best available"])]
+      : ["Flexible / Best available"];
 
-      if (!available.includes("Flexible / Best available")) {
-        available.push("Flexible / Best available");
-      }
-    }
+    setAvailableTimeWindows(nextAvailable);
 
-    if (!available.length) {
-      available = ["Flexible / Best available"];
-    }
+    const selectedSlotStillValid =
+      selectedTime === "Flexible / Best available" ||
+      nextAvailable.includes(selectedTime);
 
-    setAvailableTimeWindows(available);
+    if (!selectedSlotStillValid) {
+      const firstSuggestedForDate = suggestions.find(
+        (s) => s.date === chosenDate && nextAvailable.includes(s.time)
+      );
 
-    if (!available.includes(selectedTime)) {
-      if (
-        suggestions.length > 0 &&
-        suggestions.some((s) => s.date === chosenDate && available.includes(s.time))
-      ) {
-        const firstSuggestedForDate = suggestions.find(
-          (s) => s.date === chosenDate && available.includes(s.time)
-        );
+      if (firstSuggestedForDate) {
         setSelectedTime(firstSuggestedForDate.time);
       } else {
-        setSelectedTime(available[0]);
+        setSelectedTime(nextAvailable[0]);
       }
     }
   } catch (error) {
     console.error("Best fit fetch error:", error);
     setBestFitError(error.message || "Unable to load best-fit times.");
     setBestFitOptions([]);
+    setSlotStatus([]);
     setAvailableTimeWindows(timeWindows);
   } finally {
     setBestFitLoading(false);
   }
 }
-
   function isValidEmail(email) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   }
@@ -784,6 +812,7 @@ const canSubmit =
     setBestFitOptions([]);
     setBestFitError("");
     setAvailableTimeWindows(timeWindows);
+    setSlotStatus([]);
     return;
   }
 
@@ -809,6 +838,18 @@ const canSubmit =
   return () => clearTimeout(timeout);
 }, [customer.address, customer.city, customer.zip]);
 
+function getSlotLabel(window) {
+  if (window === "Flexible / Best available") {
+    return window;
+  }
+
+  const match = slotStatus.find((slot) => slot.window === window);
+
+  if (!match) return window;
+  if (match.isAvailable) return window;
+
+  return `${window} — Unavailable`;
+}
   
 
   return ( 
@@ -1659,13 +1700,28 @@ const canSubmit =
     value={selectedTime}
     onChange={(e) => setSelectedTime(e.target.value)}
   >
-  
-    {availableTimeWindows.map((window) => (
-      <option key={window} value={window}>
-        {window}
-      </option>
-    ))}
+    {timeWindows.map((window) => {
+      const isFlexible = window === "Flexible / Best available";
+      const match = slotStatus.find((slot) => slot.window === window);
+      const isAvailable = isFlexible ? true : match ? match.isAvailable : true;
+
+      return (
+        <option
+          key={window}
+          value={window}
+          disabled={!isAvailable}
+        >
+          {getSlotLabel(window)}
+        </option>
+      );
+    })}
   </select>
+
+  {slotStatus.some((slot) => !slot.isAvailable) && (
+    <small style={{ color: "#6b7280", marginTop: "6px", display: "block" }}>
+      Some time windows are full and shown as unavailable.
+    </small>
+  )}
 </Field>
 
 <Field label="Notes for the technician" className="span-2">

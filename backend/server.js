@@ -929,7 +929,7 @@ app.post("/api/book", async (req, res) => {
     console.log("Passed validation, building email objects...");
     console.log("About to geocode address...");
 
-    let geo = {
+ let geo = {
   lat: "",
   lng: "",
   formattedAddress: `${address}, ${city}, ${zip}`,
