@@ -678,20 +678,39 @@ async function fetchBestFitOptions(chosenDate = selectedDate) {
       throw new Error(data.message || "Failed to fetch best-fit options.");
     }
 
-    const suggestions = data.suggestions || [];
-    const slotStatus = data.slotStatus || [];
+    const suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
+    const slotStatus = Array.isArray(data.slotStatus) ? data.slotStatus : [];
 
     setBestFitOptions(suggestions);
 
-    const available = getAvailableTimeWindows(slotStatus);
+    let available = timeWindows;
+
+    if (slotStatus.length > 0) {
+      available = slotStatus
+        .filter((slot) => slot.isAvailable)
+        .map((slot) => slot.window);
+
+      if (!available.includes("Flexible / Best available")) {
+        available.push("Flexible / Best available");
+      }
+    }
+
+    if (!available.length) {
+      available = ["Flexible / Best available"];
+    }
+
     setAvailableTimeWindows(available);
 
-    const selectedTimeStillAvailable = available.includes(selectedTime);
-
-    if (!selectedTimeStillAvailable) {
-      if (suggestions.length > 0 && suggestions[0].date === chosenDate) {
-        setSelectedTime(suggestions[0].time);
-      } else if (available.length > 0) {
+    if (!available.includes(selectedTime)) {
+      if (
+        suggestions.length > 0 &&
+        suggestions.some((s) => s.date === chosenDate && available.includes(s.time))
+      ) {
+        const firstSuggestedForDate = suggestions.find(
+          (s) => s.date === chosenDate && available.includes(s.time)
+        );
+        setSelectedTime(firstSuggestedForDate.time);
+      } else {
         setSelectedTime(available[0]);
       }
     }
@@ -699,7 +718,7 @@ async function fetchBestFitOptions(chosenDate = selectedDate) {
     console.error("Best fit fetch error:", error);
     setBestFitError(error.message || "Unable to load best-fit times.");
     setBestFitOptions([]);
-    setAvailableTimeWindows(["Flexible / Best available"]);
+    setAvailableTimeWindows(timeWindows);
   } finally {
     setBestFitLoading(false);
   }
@@ -760,14 +779,20 @@ const canSubmit =
     return available;
   }
   
-  useEffect(() => {
-  if (!addressValid || !selectedDate) {
+ useEffect(() => {
+  if (!addressValid) {
+    setBestFitOptions([]);
+    setBestFitError("");
     setAvailableTimeWindows(timeWindows);
     return;
   }
 
-  fetchBestFitOptions(selectedDate);
-}, [selectedDate]);
+  const timeout = setTimeout(() => {
+    fetchBestFitOptions(selectedDate);
+  }, 700);
+
+  return () => clearTimeout(timeout);
+}, [customer.address, customer.city, customer.zip]);
 
  useEffect(() => {
   if (!addressValid) {

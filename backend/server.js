@@ -432,7 +432,7 @@ const auth = new google.auth.GoogleAuth({
 });
 app.post("/api/best-fit", async (req, res) => {
   try {
-    const { address, city, zip } = req.body;
+    const { address, city, zip, selectedDate } = req.body;
 
     if (!address || !city || !zip) {
       return res.status(400).json({
@@ -466,9 +466,7 @@ app.post("/api/best-fit", async (req, res) => {
       const eventStart = event.start?.dateTime || event.start?.date;
       const coords = await getEventCoordinates(calendar, event);
 
-      if (!eventStart || !coords) {
-        continue;
-      }
+      if (!eventStart || !coords) continue;
 
       const distance = getDistanceMiles(
         customerGeo.lat,
@@ -480,11 +478,8 @@ app.post("/api/best-fit", async (req, res) => {
       const eventDate = getDateStringFromDateTime(eventStart);
       const eventWindow = getTimeLabel(eventStart);
 
-      if (!eventDate || !eventWindow) {
-        continue;
-      }
+      if (!eventDate || !eventWindow) continue;
 
-      // If nearby, prefer neighbor slots instead of the same slot
       if (distance <= 5) {
         const neighborSlots = getNeighborSlots(eventWindow);
 
@@ -497,14 +492,10 @@ app.post("/api/best-fit", async (req, res) => {
             customerGeo
           );
 
-          if (!slotInfo.isAvailable) {
-            continue;
-          }
+          if (!slotInfo.isAvailable) continue;
 
           const key = `${eventDate}|${neighborWindow}`;
-          if (seenSuggestions.has(key)) {
-            continue;
-          }
+          if (seenSuggestions.has(key)) continue;
 
           seenSuggestions.add(key);
 
@@ -526,7 +517,6 @@ app.post("/api/best-fit", async (req, res) => {
         continue;
       }
 
-      // If farther away, allow same slot when capacity rules permit it
       const sameSlotInfo = await getSlotBookingInfo(
         calendar,
         events,
@@ -555,25 +545,43 @@ app.post("/api/best-fit", async (req, res) => {
     }
 
     suggestions.sort((a, b) => {
-      if (a.priority !== b.priority) {
-        return a.priority - b.priority;
-      }
-    
-      if (a.distanceMiles !== b.distanceMiles) {
-        return a.distanceMiles - b.distanceMiles;
-      }
-    
-      if (a.date !== b.date) {
-        return a.date.localeCompare(b.date);
-      }
-    
+      if (a.priority !== b.priority) return a.priority - b.priority;
+      if (a.distanceMiles !== b.distanceMiles) return a.distanceMiles - b.distanceMiles;
+      if (a.date !== b.date) return a.date.localeCompare(b.date);
       return SCHEDULE_TIME_WINDOWS.indexOf(a.time) - SCHEDULE_TIME_WINDOWS.indexOf(b.time);
     });
+
+    let slotStatus = [];
+
+    if (selectedDate) {
+      slotStatus = await Promise.all(
+        SCHEDULE_TIME_WINDOWS.map(async (windowLabel) => {
+          const info = await getSlotBookingInfo(
+            calendar,
+            events,
+            selectedDate,
+            windowLabel,
+            customerGeo
+          );
+
+          return {
+            window: windowLabel,
+            isAvailable: info.isAvailable,
+            bookingsCount: info.bookingsCount,
+            isTooClose: info.isTooClose,
+            nearestDistanceMiles: info.nearestDistanceMiles,
+          };
+        })
+      );
+    }
 
     return res.json({
       success: true,
       customerAddress: customerGeo.formattedAddress,
-      suggestions: suggestions.slice(0, 5),
+      suggestions: selectedDate
+        ? suggestions.filter((s) => s.date === selectedDate).slice(0, 5)
+        : suggestions.slice(0, 5),
+      slotStatus,
     });
   } catch (error) {
     console.error("Best fit error:", error);
