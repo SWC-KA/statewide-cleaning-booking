@@ -278,7 +278,7 @@ function getUpcomingDates(daysAhead = 14) {
 
 const dateOptions = getUpcomingDates(14);
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+const API_BASE = import.meta.env.VITE_API_BASE_URL 
 
 function currency(value) {
   return new Intl.NumberFormat("en-US", {
@@ -566,6 +566,19 @@ async function handleSubmit() {
   ) {
     stairsPrice = Number(item.stairCount || 0) * 7;
   }
+  // Remove services with 0 quantity
+const validServices = selectedServices.filter(service => {
+  return service.quantity && service.quantity > 0;
+});
+
+// Block submission if nothing valid
+if (validServices.length === 0) {
+  alert("Please select at least one service.");
+  return;
+}
+
+// Replace before sending
+bookingData.services = validServices;
 
   const lineTotal = getLineEstimate(item);
 
@@ -634,9 +647,10 @@ Price: ${service.lineTotal}${stairsText}${addOnsText}`;
     setLoading(false);
   }
 }
-async function fetchBestFitOptions() {
+async function fetchBestFitOptions(chosenDate = selectedDate) {
   if (!addressValid) {
     setBestFitOptions([]);
+    setAvailableTimeWindows(timeWindows);
     setBestFitError("");
     return;
   }
@@ -654,6 +668,7 @@ async function fetchBestFitOptions() {
         address: customer.address,
         city: customer.city,
         zip: customer.zip,
+        selectedDate: chosenDate,
       }),
     });
 
@@ -664,16 +679,27 @@ async function fetchBestFitOptions() {
     }
 
     const suggestions = data.suggestions || [];
+    const slotStatus = data.slotStatus || [];
+
     setBestFitOptions(suggestions);
 
-    if (suggestions.length > 0) {
-      setSelectedDate(suggestions[0].date);
-      setSelectedTime(suggestions[0].time);
+    const available = getAvailableTimeWindows(slotStatus);
+    setAvailableTimeWindows(available);
+
+    const selectedTimeStillAvailable = available.includes(selectedTime);
+
+    if (!selectedTimeStillAvailable) {
+      if (suggestions.length > 0 && suggestions[0].date === chosenDate) {
+        setSelectedTime(suggestions[0].time);
+      } else if (available.length > 0) {
+        setSelectedTime(available[0]);
+      }
     }
   } catch (error) {
     console.error("Best fit fetch error:", error);
     setBestFitError(error.message || "Unable to load best-fit times.");
     setBestFitOptions([]);
+    setAvailableTimeWindows(["Flexible / Best available"]);
   } finally {
     setBestFitLoading(false);
   }
@@ -735,22 +761,28 @@ const canSubmit =
   }
   
   useEffect(() => {
-  setAvailableTimeWindows(timeWindows);
+  if (!addressValid || !selectedDate) {
+    setAvailableTimeWindows(timeWindows);
+    return;
+  }
+
+  fetchBestFitOptions(selectedDate);
 }, [selectedDate]);
 
-  useEffect(() => {
-    if (!addressValid) {
-      setBestFitOptions([]);
-      setBestFitError("");
-      return;
-    }
-  
-    const timeout = setTimeout(() => {
-      fetchBestFitOptions();
-    }, 700);
-  
-    return () => clearTimeout(timeout);
-  }, [customer.address, customer.city, customer.zip]);
+ useEffect(() => {
+  if (!addressValid) {
+    setBestFitOptions([]);
+    setBestFitError("");
+    setAvailableTimeWindows(timeWindows);
+    return;
+  }
+
+  const timeout = setTimeout(() => {
+    fetchBestFitOptions(selectedDate);
+  }, 700);
+
+  return () => clearTimeout(timeout);
+}, [customer.address, customer.city, customer.zip]);
 
   
 
@@ -1582,7 +1614,11 @@ const canSubmit =
   <select
     className="input"
     value={selectedDate}
-    onChange={(e) => setSelectedDate(e.target.value)}
+    onChange={(e) => {
+      const nextDate = e.target.value;
+      setSelectedDate(nextDate);
+      setSelectedTime("Flexible / Best available");
+    }}
   >
     {dateOptions.map((date) => (
       <option key={date.value} value={date.value}>
@@ -1598,6 +1634,12 @@ const canSubmit =
     value={selectedTime}
     onChange={(e) => setSelectedTime(e.target.value)}
   >
+    {availableTimeWindows.length === 1 &&
+  availableTimeWindows[0] === "Flexible / Best available" && (
+    <p className="form-help">
+      The standard time windows for this date are full. Please choose another date or use Flexible / Best available.
+    </p>
+)}
     {availableTimeWindows.map((window) => (
       <option key={window} value={window}>
         {window}
