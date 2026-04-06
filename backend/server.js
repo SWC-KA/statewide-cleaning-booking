@@ -576,18 +576,78 @@ app.post("/api/best-fit", async (req, res) => {
     }
 
     return res.json({
-      success: true,
-      customerAddress: customerGeo.formattedAddress,
-      suggestions: selectedDate
-        ? suggestions.filter((s) => s.date === selectedDate).slice(0, 5)
-        : suggestions.slice(0, 5),
-      slotStatus,
-    });
+  success: true,
+  customerAddress: customerGeo.formattedAddress,
+  suggestions: suggestions.slice(0, 5),
+  slotStatus,
+});
   } catch (error) {
     console.error("Best fit error:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Error finding best-fit times.",
+    });
+  }
+});
+
+app.post("/api/slot-status", async (req, res) => {
+  try {
+    const { address, city, zip, selectedDate } = req.body;
+
+    if (!address || !city || !zip || !selectedDate) {
+      return res.status(400).json({
+        success: false,
+        message: "Address, city, zip, and selectedDate are required.",
+      });
+    }
+
+    const client = await auth.getClient();
+    const calendar = google.calendar({ version: "v3", auth: client });
+
+    const customerGeo = await geocodeAddress(address, city, zip);
+
+    const dayStart = new Date(`${selectedDate}T00:00:00-04:00`);
+    const dayEnd = new Date(`${selectedDate}T23:59:59-04:00`);
+
+    const response = await calendar.events.list({
+      calendarId: process.env.GOOGLE_CALENDAR_ID,
+      timeMin: dayStart.toISOString(),
+      timeMax: dayEnd.toISOString(),
+      singleEvents: true,
+      orderBy: "startTime",
+    });
+
+    const events = response.data.items || [];
+
+    const slotStatus = await Promise.all(
+      SCHEDULE_TIME_WINDOWS.map(async (windowLabel) => {
+        const info = await getSlotBookingInfo(
+          calendar,
+          events,
+          selectedDate,
+          windowLabel,
+          customerGeo
+        );
+
+        return {
+          window: windowLabel,
+          isAvailable: info.isAvailable,
+          bookingsCount: info.bookingsCount,
+          isTooClose: info.isTooClose,
+          nearestDistanceMiles: info.nearestDistanceMiles,
+        };
+      })
+    );
+
+    return res.json({
+      success: true,
+      slotStatus,
+    });
+  } catch (error) {
+    console.error("Slot status error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error loading slot availability.",
     });
   }
 });

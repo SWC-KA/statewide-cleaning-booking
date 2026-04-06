@@ -679,12 +679,10 @@ Price: ${service.lineTotal}${stairsText}${addOnsText}`;
     setLoading(false);
   }
 }
-async function fetchBestFitOptions(chosenDate = selectedDate) {
+async function fetchBestFitOptions() {
   if (!addressValid) {
     setBestFitOptions([]);
     setBestFitError("");
-    setAvailableTimeWindows(timeWindows);
-    setSlotStatus([]);
     return;
   }
 
@@ -701,7 +699,6 @@ async function fetchBestFitOptions(chosenDate = selectedDate) {
         address: customer.address,
         city: customer.city,
         zip: customer.zip,
-        selectedDate: chosenDate,
       }),
     });
 
@@ -712,9 +709,44 @@ async function fetchBestFitOptions(chosenDate = selectedDate) {
     }
 
     const suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
-    const status = Array.isArray(data.slotStatus) ? data.slotStatus : [];
-
     setBestFitOptions(suggestions);
+  } catch (error) {
+    console.error("Best fit fetch error:", error);
+    setBestFitError(error.message || "Unable to load best-fit times.");
+    setBestFitOptions([]);
+  } finally {
+    setBestFitLoading(false);
+  }
+}
+
+async function fetchSlotStatus(chosenDate = selectedDate) {
+  if (!addressValid || !chosenDate) {
+    setSlotStatus([]);
+    setAvailableTimeWindows(timeWindows);
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE}/api/slot-status`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        address: customer.address,
+        city: customer.city,
+        zip: customer.zip,
+        selectedDate: chosenDate,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || "Failed to fetch slot availability.");
+    }
+
+    const status = Array.isArray(data.slotStatus) ? data.slotStatus : [];
     setSlotStatus(status);
 
     const available = status
@@ -722,34 +754,21 @@ async function fetchBestFitOptions(chosenDate = selectedDate) {
       .map((slot) => slot.window);
 
     const nextAvailable = available.length
-      ? [...available, ...(available.includes("Flexible / Best available") ? [] : ["Flexible / Best available"])]
+      ? [...available, "Flexible / Best available"]
       : ["Flexible / Best available"];
 
     setAvailableTimeWindows(nextAvailable);
 
-    const selectedSlotStillValid =
-      selectedTime === "Flexible / Best available" ||
-      nextAvailable.includes(selectedTime);
-
-    if (!selectedSlotStillValid) {
-      const firstSuggestedForDate = suggestions.find(
-        (s) => s.date === chosenDate && nextAvailable.includes(s.time)
-      );
-
-      if (firstSuggestedForDate) {
-        setSelectedTime(firstSuggestedForDate.time);
-      } else {
-        setSelectedTime(nextAvailable[0]);
-      }
+    if (
+      selectedTime !== "Flexible / Best available" &&
+      !available.includes(selectedTime)
+    ) {
+      setSelectedTime("Flexible / Best available");
     }
   } catch (error) {
-    console.error("Best fit fetch error:", error);
-    setBestFitError(error.message || "Unable to load best-fit times.");
-    setBestFitOptions([]);
+    console.error("Slot status fetch error:", error);
     setSlotStatus([]);
     setAvailableTimeWindows(timeWindows);
-  } finally {
-    setBestFitLoading(false);
   }
 }
   function isValidEmail(email) {
@@ -807,21 +826,15 @@ const canSubmit =
     return available;
   }
   
- useEffect(() => {
-  if (!addressValid) {
-    setBestFitOptions([]);
-    setBestFitError("");
-    setAvailableTimeWindows(timeWindows);
+useEffect(() => {
+  if (!addressValid || !selectedDate) {
     setSlotStatus([]);
+    setAvailableTimeWindows(timeWindows);
     return;
   }
 
-  const timeout = setTimeout(() => {
-    fetchBestFitOptions(selectedDate);
-  }, 700);
-
-  return () => clearTimeout(timeout);
-}, [customer.address, customer.city, customer.zip]);
+  fetchSlotStatus(selectedDate);
+}, [selectedDate]);
 
  useEffect(() => {
   if (!addressValid) {
