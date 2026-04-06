@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
 import logo from "./assets/statewide-logo.png";
 
-const [slotStatus, setSlotStatus] = useState([]);
 const services = [
   {
     id: "carpet-room",
@@ -364,6 +363,7 @@ export default function App() {
   const [bestFitOptions, setBestFitOptions] = useState([]);
   const [bestFitLoading, setBestFitLoading] = useState(false);
   const [bestFitError, setBestFitError] = useState("");
+  const [slotStatus, setSlotStatus] = useState([]);
   const [customer, setCustomer] = useState({
     firstName: "",
     lastName: "",
@@ -1711,7 +1711,7 @@ function getSlotLabel(window) {
           value={window}
           disabled={!isAvailable}
         >
-          {getSlotLabel(window)}
+          {isAvailable || isFlexible ? window : `${window} — Unavailable`}
         </option>
       );
     })}
