@@ -799,12 +799,16 @@ async function sendEmailsAPI(bookingData) {
     bookingData.customerServiceSummary ||
     "No services selected.";
 
-  const businessSubject = `New Booking Request - ${customerName}`;
   const requestTypeText = bookingData.useSpecificDateRequest
-  ? "Specific date request - pending confirmation"
-  : "Standard booking request";
+    ? "Specific date request - pending confirmation"
+    : "Standard booking request";
 
-const businessBody = `New booking request received
+  const specificRequestNote = bookingData.useSpecificDateRequest
+    ? "This is a requested date and time preference only. We will review availability and confirm with you."
+    : "";
+
+  const businessSubject = `New Booking Request - ${customerName}`;
+  const businessBody = `New booking request received
 
 Customer:
 ${customerName}
@@ -819,6 +823,7 @@ ${bookingData.city || ""}, ${bookingData.zip || ""}
 Property Type: ${bookingData.propertyType || ""}
 Preferred Date: ${bookingData.preferredDate || ""}
 Preferred Time: ${bookingData.preferredTime || ""}
+${bookingData.useSpecificDateRequest ? `Specific Time Preference: ${bookingData.specificTimePreference || "Flexible"}` : ""}
 
 Estimated Total: ${bookingData.estimate || ""}
 Estimated Hours: ${bookingData.estimatedHours || ""}
@@ -827,11 +832,7 @@ Services:
 ${servicesText}
 
 Notes:
-${
-  bookingData.useSpecificDateRequest
-    ? "This is a requested date and time preference only. We will review availability and confirm with you."
-    : ""
-}
+${specificRequestNote}
 ${bookingData.notes || ""}
 `;
 
@@ -840,8 +841,11 @@ ${bookingData.notes || ""}
 
 Thank you for your booking request with ${businessName}. We received your request and will review it shortly.
 
+Request Type: ${requestTypeText}
 Requested date: ${bookingData.preferredDate || ""}
 Requested time: ${bookingData.preferredTime || ""}
+${bookingData.useSpecificDateRequest ? `Specific time preference: ${bookingData.specificTimePreference || "Flexible"}` : ""}
+
 Estimated starting total: ${bookingData.estimate || ""}
 Estimated job time: ${bookingData.estimatedHours || ""} hour(s)
 
@@ -851,6 +855,8 @@ ${bookingData.customerServiceSummary || servicesText}
 Service address:
 ${bookingData.address || ""}
 ${bookingData.city || ""}, ${bookingData.zip || ""}
+
+${specificRequestNote}
 
 If anything needs to be updated, please reply to this email.
 
@@ -862,6 +868,7 @@ ${businessEmail}
   console.log("Email API check:", {
     hasApiKey: !!process.env.RESEND_API_KEY,
     businessEmail,
+    useSpecificDateRequest: !!bookingData.useSpecificDateRequest,
   });
 
   console.log("About to send business email...");
@@ -1048,22 +1055,24 @@ setImmediate(async () => {
   console.log("BACKGROUND ORDER CHECK - SHEETS FIRST");
 
   const emailPayload = {
-    firstName,
-    lastName,
-    phone,
-    email,
-    address,
-    city,
-    zip,
-    propertyType,
-    notes,
-    preferredDate,
-    preferredTime,
-    estimate,
-    estimatedHours,
-    servicesText,
-    customerServiceSummary,
-  };
+  firstName,
+  lastName,
+  phone,
+  email,
+  address,
+  city,
+  zip,
+  propertyType,
+  notes,
+  preferredDate,
+  preferredTime,
+  estimate,
+  estimatedHours,
+  servicesText,
+  customerServiceSummary,
+  useSpecificDateRequest: !!useSpecificDateRequest,
+  specificTimePreference: specificTimePreference || "",
+};
 
   try {
     console.log("STEP 1 - before sheets");
