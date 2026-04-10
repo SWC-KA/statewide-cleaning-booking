@@ -248,46 +248,7 @@ async function validateRequestedBookingSlot({
     customerGeo,
   };
 }
-async function validateRequestedBookingSlot({
-  preferredDate,
-  preferredTime,
-  address,
-  city,
-  zip,
-}) {
-  const client = await auth.getClient();
-  const calendar = google.calendar({ version: "v3", auth: client });
 
-  const slot = getSlotTimes(preferredDate, preferredTime);
-  if (!slot) {
-    throw new Error("Invalid preferred date or time.");
-  }
-
-  const response = await calendar.events.list({
-    calendarId: process.env.GOOGLE_CALENDAR_ID,
-    timeMin: new Date(slot.start).toISOString(),
-    timeMax: new Date(slot.end).toISOString(),
-    singleEvents: true,
-    orderBy: "startTime",
-  });
-
-  const events = response.data.items || [];
-
-  const customerGeo = await geocodeAddress(address, city, zip);
-
-  const slotInfo = await getSlotBookingInfo(
-    calendar,
-    events,
-    preferredDate,
-    preferredTime,
-    customerGeo
-  );
-
-  return {
-    slotInfo,
-    customerGeo,
-  };
-}
 async function getSlotBookingInfo(
   calendar,
   events,
@@ -839,10 +800,11 @@ async function sendEmailsAPI(bookingData) {
     "No services selected.";
 
   const businessSubject = `New Booking Request - ${customerName}`;
-  const businessBody = `New booking request received
   const requestTypeText = bookingData.useSpecificDateRequest
   ? "Specific date request - pending confirmation"
   : "Standard booking request";
+
+const businessBody = `New booking request received
 
 Customer:
 ${customerName}
