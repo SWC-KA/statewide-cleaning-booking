@@ -348,7 +348,24 @@ function InfoRow({ title, text }) {
   );
 }
 
+function getTodayLocalDateString() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
+function formatSpecificDateLabel(dateString) {
+  if (!dateString) return "";
+  const date = new Date(`${dateString}T12:00:00`);
+  return date.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
 export default function App() {
   const [starterSelectedIds, setStarterSelectedIds] = useState(
@@ -380,6 +397,10 @@ export default function App() {
     () => Object.fromEntries(services.map((s) => [s.id, s])),
     []
   );
+
+  const [useSpecificDateRequest, setUseSpecificDateRequest] = useState(false);
+const [specificDate, setSpecificDate] = useState("");
+const [specificTimePreference, setSpecificTimePreference] = useState("Flexible");
 
   function toggleStarterService(serviceId) {
     setStarterSelectedIds((current) => {
@@ -624,22 +645,27 @@ Price: ${service.lineTotal}${stairsText}${addOnsText}`;
       .join("\n\n");
 
     const payload = {
-      firstName: customer.firstName,
-      lastName: customer.lastName,
-      phone: customer.phone,
-      email: customer.email,
-      address: customer.address,
-      city: customer.city,
-      zip: customer.zip,
-      propertyType: customer.propertyType,
-      notes: customer.serviceNotes,
-      preferredDate: selectedDate,
-      preferredTime: selectedTime,
-      estimate: currency(estimate),
-      estimatedHours,
-      services: serviceSummary,
-      customerServiceSummary,
-    };
+  firstName: customer.firstName,
+  lastName: customer.lastName,
+  phone: customer.phone,
+  email: customer.email,
+  address: customer.address,
+  city: customer.city,
+  zip: customer.zip,
+  propertyType: customer.propertyType,
+  notes: customer.serviceNotes,
+  estimate: currency(estimate),
+  estimatedHours,
+  services: serviceSummary,
+  customerServiceSummary,
+
+  useSpecificDateRequest,
+  preferredDate: useSpecificDateRequest ? specificDate : selectedDate,
+  preferredTime: useSpecificDateRequest
+    ? `Requested specific date (${specificTimePreference})`
+    : selectedTime,
+  specificTimePreference: useSpecificDateRequest ? specificTimePreference : "",
+};
 
     const response = await fetch(`${API_BASE}/api/book`, {
       method: "POST",
@@ -656,22 +682,14 @@ Price: ${service.lineTotal}${stairsText}${addOnsText}`;
     }
 
     const errorData = await response.json().catch(() => ({}));
+if (response.status === 409 && !useSpecificDateRequest) {
+  alert(errorData.message || "That time slot is no longer available.");
 
-    if (response.status === 409) {
-      alert(errorData.message || "That time slot is no longer available.");
-
-      await fetchBestFitOptions(selectedDate);
-
-      const refreshedAvailable = slotStatus
-        .filter((slot) => slot.isAvailable)
-        .map((slot) => slot.window);
-
-      if (!refreshedAvailable.includes(selectedTime)) {
-        setSelectedTime("Flexible / Best available");
-      }
-    } else {
-      alert(errorData.message || "Something went wrong sending the request.");
-    }
+  await fetchSlotStatus(selectedDate);
+  setSelectedTime("Flexible / Best available");
+} else if (!response.ok) {
+  alert(errorData.message || "Something went wrong sending the request.");
+}
   } catch (error) {
     console.error(error);
     alert("Something went wrong sending the request.");
@@ -808,11 +826,18 @@ const hasRequiredCustomerInfo =
 const hasAtLeastOneService = selectedServices.length > 0;
 
 const canSubmit =
-  hasRequiredCustomerInfo &&
-  hasAtLeastOneService &&
-  emailValid &&
-  phoneValid &&
-  addressValid;
+  customer.firstName.trim() &&
+  customer.lastName.trim() &&
+  customer.phone.trim() &&
+  customer.email.trim() &&
+  customer.address.trim() &&
+  customer.city.trim() &&
+  customer.zip.trim() &&
+  (
+    useSpecificDateRequest
+      ? specificDate.trim()
+      : selectedDate && selectedTime
+  );
 
   function getAvailableTimeWindows(slotStatus = []) {
     const available = slotStatus
@@ -1688,54 +1713,109 @@ function getSlotLabel(window) {
     </div>
   )}
 </div>
+<div className="request-specific-date-box">
+  <label className="checkbox-row">
+    <input
+      type="checkbox"
+      checked={useSpecificDateRequest}
+      onChange={(e) => {
+        const checked = e.target.checked;
+        setUseSpecificDateRequest(checked);
 
-<Field label="Preferred date">
-  <select
-    className="input"
-    value={selectedDate}
-    onChange={(e) => {
-      const nextDate = e.target.value;
-      setSelectedDate(nextDate);
-      setSelectedTime("Flexible / Best available");
-    }}
-  >
-    {dateOptions.map((date) => (
-      <option key={date.value} value={date.value}>
-        {date.label}
-      </option>
-    ))}
-  </select>
-</Field>
+        if (!checked) {
+          setSpecificDate("");
+          setSpecificTimePreference("Flexible");
+        }
+      }}
+    />
+    <span>Request a specific date instead</span>
+  </label>
 
-<Field label="Preferred arrival window">
-  <select
-    className="input"
-    value={selectedTime}
-    onChange={(e) => setSelectedTime(e.target.value)}
-  >
-    {timeWindows.map((window) => {
-      const isFlexible = window === "Flexible / Best available";
-      const match = slotStatus.find((slot) => slot.window === window);
-      const isAvailable = isFlexible ? true : match ? match.isAvailable : true;
+  <small className="helper-text">
+    Don’t see a date that works? Send us your preferred date and we’ll review availability before confirming.
+  </small>
+</div>
 
-      return (
-        <option
-          key={window}
-          value={window}
-          disabled={!isAvailable}
-        >
-          {isAvailable || isFlexible ? window : `${window} — Unavailable`}
-        </option>
-      );
-    })}
-  </select>
+{!useSpecificDateRequest ? (
+  <>
+    <Field label="Preferred date">
+      <select
+        className="input"
+        value={selectedDate}
+        onChange={(e) => {
+          const nextDate = e.target.value;
+          setSelectedDate(nextDate);
+          setSelectedTime("Flexible / Best available");
+        }}
+      >
+        {dateOptions.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </Field>
 
-  {slotStatus.some((slot) => !slot.isAvailable) && (
-    <small style={{ color: "#6b7280", marginTop: "6px", display: "block" }}>
-      Some time windows are full and shown as unavailable.
+    <Field label="Preferred arrival window">
+      <select
+        className="input"
+        value={selectedTime}
+        onChange={(e) => setSelectedTime(e.target.value)}
+      >
+        {timeWindows.map((window) => {
+          const isFlexible = window === "Flexible / Best available";
+          const match = slotStatus.find((slot) => slot.window === window);
+          const isAvailable = isFlexible ? true : match ? match.isAvailable : true;
+
+          return (
+            <option
+              key={window}
+              value={window}
+              disabled={!isAvailable}
+            >
+              {isAvailable || isFlexible ? window : `${window} — Unavailable`}
+            </option>
+          );
+        })}
+      </select>
+
+      {slotStatus.some((slot) => !slot.isAvailable) && (
+        <small className="helper-text">
+          Some time windows are full and shown as unavailable.
+        </small>
+      )}
+    </Field>
+  </>
+) : (
+  <>
+    <Field label="Requested specific date">
+      <input
+        className="input"
+        type="date"
+        min={getTodayLocalDateString()}
+        value={specificDate}
+        onChange={(e) => setSpecificDate(e.target.value)}
+      />
+    </Field>
+
+    <Field label="Preferred time for requested date">
+      <select
+        className="input"
+        value={specificTimePreference}
+        onChange={(e) => setSpecificTimePreference(e.target.value)}
+      >
+        <option value="Morning">Morning</option>
+        <option value="Midday">Midday</option>
+        <option value="Afternoon">Afternoon</option>
+        <option value="Flexible">Flexible</option>
+      </select>
+    </Field>
+
+    <small className="helper-text">
+      This will be reviewed manually before confirmation.
     </small>
-  )}
-</Field>
+  </>
+)}
 
 <Field label="Notes for the technician" className="span-2">
   <textarea
@@ -1833,14 +1913,25 @@ function getSlotLabel(window) {
       </div>
 
       <div className="review-section">
-        <h3>Requested time</h3>
-        <p><strong>Date:</strong> {selectedDate}</p>
-        <p><strong>Arrival Window:</strong> {selectedTime}</p>
-        <p><strong>Estimated Total:</strong> {currency(estimate)}</p>
-        <p><strong>Estimated Time:</strong> {estimatedHours} hour{estimatedHours === 1 ? "" : "s"}</p>
-        <p><strong>Notes:</strong> {customer.serviceNotes || "None"}</p>
+  <h4>Requested time</h4>
 
-      </div>
+  {!useSpecificDateRequest ? (
+    <>
+      <p><strong>Date:</strong> {selectedDate}</p>
+      <p><strong>Arrival Window:</strong> {selectedTime}</p>
+    </>
+  ) : (
+    <>
+      <p><strong>Requested specific date:</strong> {formatSpecificDateLabel(specificDate)}</p>
+      <p><strong>Preferred time:</strong> {specificTimePreference}</p>
+      <p><strong>Status:</strong> Pending availability confirmation</p>
+    </>
+  )}
+
+  <p><strong>Estimated Total:</strong> {currency(estimate)}</p>
+  <p><strong>Estimated Time:</strong> {estimatedHours} hours</p>
+  <p><strong>Notes:</strong> {customer.serviceNotes || "None"}</p>
+</div>
 
 <div className="modal-actions">
   <button

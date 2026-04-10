@@ -716,6 +716,8 @@ async function createCalendarEvent(data) {
     formattedAddress,
     lat,
     lng,
+    useSpecificDateRequest,
+    specificTimePreference,
   } = data;
 
   const fullAddress = formattedAddress || `${address}, ${city}, ${zip}`;
@@ -737,12 +739,16 @@ async function createCalendarEvent(data) {
   console.log("CALENDAR SERVICES TEXT:", servicesText);
 
   const startTimeMap = {
-    "8:00 AM – 10:00 AM": { start: "08:00:00", end: "10:00:00" },
-    "10:00 AM – 12:00 PM": { start: "10:00:00", end: "12:00:00" },
-    "12:00 PM – 2:00 PM": { start: "12:00:00", end: "14:00:00" },
-    "2:00 PM – 4:00 PM": { start: "14:00:00", end: "16:00:00" },
-    "Flexible / Best available": { start: "09:00:00", end: "11:00:00" },
-  };
+  "8:00 AM – 10:00 AM": { start: "08:00:00", end: "10:00:00" },
+  "10:00 AM – 12:00 PM": { start: "10:00:00", end: "12:00:00" },
+  "12:00 PM – 2:00 PM": { start: "12:00:00", end: "14:00:00" },
+  "2:00 PM – 4:00 PM": { start: "14:00:00", end: "16:00:00" },
+  "Flexible / Best available": { start: "09:00:00", end: "11:00:00" },
+  "Requested specific date (Morning)": { start: "09:00:00", end: "11:00:00" },
+  "Requested specific date (Midday)": { start: "11:00:00", end: "13:00:00" },
+  "Requested specific date (Afternoon)": { start: "13:00:00", end: "15:00:00" },
+  "Requested specific date (Flexible)": { start: "09:00:00", end: "11:00:00" },
+};
 
   const eventDate = preferredDate;
   const timeSlot = startTimeMap[preferredTime];
@@ -751,14 +757,21 @@ async function createCalendarEvent(data) {
     throw new Error("Invalid preferred date or time for calendar event.");
   }
 
-  const event = {
-    summary: `SWC - ${firstName} ${lastName}`,
-    location: fullAddress,
-    description: `
+const event = {
+  summary: useSpecificDateRequest
+    ? `SWC - SPECIFIC DATE REQUEST - ${firstName} ${lastName}`
+    : `SWC - ${firstName} ${lastName}`,
+  location: fullAddress,
+  description: `
 Customer: ${firstName} ${lastName}
 Phone: ${phone}
 Email: ${email}
 Property Type: ${propertyType}
+
+Request Type: ${useSpecificDateRequest ? "Specific date request - pending confirmation" : "Standard booking request"}
+Preferred Date: ${preferredDate}
+Preferred Time: ${preferredTime}
+${useSpecificDateRequest ? `Specific Time Preference: ${specificTimePreference || "Flexible"}` : ""}
 
 Estimate: ${estimate}
 Estimated Hours: ${estimatedHours}
@@ -770,16 +783,16 @@ Notes:
 ${notes || "None"}
 Coordinates:
 ${lat}, ${lng}
-    `.trim(),
-    start: {
-      dateTime: `${eventDate}T${timeSlot.start}-04:00`,
-      timeZone: "America/New_York",
-    },
-    end: {
-      dateTime: `${eventDate}T${timeSlot.end}-04:00`,
-      timeZone: "America/New_York",
-    },
-  };
+  `.trim(),
+  start: {
+    dateTime: `${eventDate}T${timeSlot.start}-04:00`,
+    timeZone: "America/New_York",
+  },
+  end: {
+    dateTime: `${eventDate}T${timeSlot.end}-04:00`,
+    timeZone: "America/New_York",
+  },
+};
 
   const existingEvents = await calendar.events.list({
     calendarId: process.env.GOOGLE_CALENDAR_ID,
@@ -827,11 +840,15 @@ async function sendEmailsAPI(bookingData) {
 
   const businessSubject = `New Booking Request - ${customerName}`;
   const businessBody = `New booking request received
+  const requestTypeText = bookingData.useSpecificDateRequest
+  ? "Specific date request - pending confirmation"
+  : "Standard booking request";
 
 Customer:
 ${customerName}
 Phone: ${bookingData.phone || ""}
 Email: ${bookingData.email || ""}
+Request Type: ${requestTypeText}
 
 Address:
 ${bookingData.address || ""}
@@ -848,6 +865,11 @@ Services:
 ${servicesText}
 
 Notes:
+${
+  bookingData.useSpecificDateRequest
+    ? "This is a requested date and time preference only. We will review availability and confirm with you."
+    : ""
+}
 ${bookingData.notes || ""}
 `;
 
@@ -923,6 +945,8 @@ app.post("/api/book", async (req, res) => {
   estimatedHours,
   services,
   customerServiceSummary,
+  useSpecificDateRequest,
+  specificTimePreference,
 } = req.body;
 
     console.log("Fields check:", {
@@ -989,44 +1013,53 @@ app.post("/api/book", async (req, res) => {
     console.log("Passed validation, building email objects...");
     console.log("About to geocode address...");
 
- let geo = {
+let geo = {
   lat: "",
   lng: "",
   formattedAddress: `${address}, ${city}, ${zip}`,
 };
 
-try {
-  const { slotInfo, customerGeo } = await validateRequestedBookingSlot({
-    preferredDate,
-    preferredTime,
-    address,
-    city,
-    zip,
-  });
+if (!useSpecificDateRequest) {
+  try {
+    const { slotInfo, customerGeo } = await validateRequestedBookingSlot({
+      preferredDate,
+      preferredTime,
+      address,
+      city,
+      zip,
+    });
 
-  if (!slotInfo.isAvailable) {
-    return res.status(409).json({
+    if (!slotInfo.isAvailable) {
+      return res.status(409).json({
+        success: false,
+        message: "That time slot is no longer available. Please choose another time.",
+      });
+    }
+
+    geo = {
+      lat: customerGeo.lat,
+      lng: customerGeo.lng,
+      formattedAddress: customerGeo.formattedAddress,
+    };
+
+    console.log("Booking slot validated:", slotInfo);
+  } catch (availabilityError) {
+    console.error("Availability check failed:", availabilityError.message);
+    return res.status(500).json({
       success: false,
-      message: "That time slot is no longer available. Please choose another time.",
+      message: "Could not verify live availability. Please try again.",
     });
   }
-
-  geo = {
-    lat: customerGeo.lat,
-    lng: customerGeo.lng,
-    formattedAddress: customerGeo.formattedAddress,
-  };
-
-  console.log("Booking slot validated:", slotInfo);
-} catch (availabilityError) {
-  console.error("Availability check failed:", availabilityError.message);
-  return res.status(500).json({
-    success: false,
-    message: "Could not verify live availability. Please try again.",
-  });
+} else {
+  try {
+    geo = await geocodeAddress(address, city, zip);
+    console.log("Specific date request geocoded:", geo);
+  } catch (geoError) {
+    console.error("Geocoding failed for specific date request:", geoError.message);
+  }
 }
 
-    const bookingData = {
+   const bookingData = {
   firstName,
   lastName,
   phone,
@@ -1044,6 +1077,8 @@ try {
   formattedAddress: geo.formattedAddress,
   lat: geo.lat,
   lng: geo.lng,
+  useSpecificDateRequest: !!useSpecificDateRequest,
+  specificTimePreference: specificTimePreference || "",
 };
 
 
