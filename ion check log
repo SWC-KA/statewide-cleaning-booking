@@ -1,0 +1,114 @@
+warning: in the working copy of 'backend/server.js', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/backend/server.js b/backend/server.js[m
+[1mindex 265f41f..0f0a3d1 100644[m
+[1m--- a/backend/server.js[m
+[1m+++ b/backend/server.js[m
+[36m@@ -9,6 +9,7 @@[m [mconst https = require("https");[m
+ const nodemailer = require("nodemailer");[m
+ [m
+ const credentialsPath = path.join(__dirname, "credentials.json");[m
+[32m+[m[32mconsole.log("BACKEND VERSION CHECK - 2026-04-04 A");[m
+ [m
+ if (process.env.GOOGLE_CREDENTIALS) {[m
+   fs.writeFileSync(credentialsPath, process.env.GOOGLE_CREDENTIALS, "utf8");[m
+[36m@@ -665,13 +666,14 @@[m [mapp.get("/", (req, res) => {[m
+ [m
+ async function sendEmailsSMTP(bookingData) {[m
+   console.log("SMTP env check:", {[m
+[31m-  SMTP_HOST: process.env.SMTP_HOST,[m
+[31m-  SMTP_PORT: process.env.SMTP_PORT,[m
+[31m-  SMTP_SECURE: process.env.SMTP_SECURE,[m
+[31m-  SMTP_USER: process.env.SMTP_USER,[m
+[31m-  SMTP_PASS_EXISTS: !!process.env.SMTP_PASS,[m
+[31m-  BUSINESS_EMAIL: process.env.BUSINESS_EMAIL,[m
+[31m-});[m
+[32m+[m[32m    SMTP_HOST: process.env.SMTP_HOST,[m
+[32m+[m[32m    SMTP_PORT: process.env.SMTP_PORT,[m
+[32m+[m[32m    SMTP_SECURE: process.env.SMTP_SECURE,[m
+[32m+[m[32m    SMTP_USER: process.env.SMTP_USER,[m
+[32m+[m[32m    SMTP_PASS_EXISTS: !!process.env.SMTP_PASS,[m
+[32m+[m[32m    BUSINESS_EMAIL: process.env.BUSINESS_EMAIL,[m
+[32m+[m[32m  });[m
+[32m+[m
+   const transporter = nodemailer.createTransport({[m
+     host: process.env.SMTP_HOST,[m
+     port: Number(process.env.SMTP_PORT || 587),[m
+[36m@@ -680,8 +682,14 @@[m [masync function sendEmailsSMTP(bookingData) {[m
+       user: process.env.SMTP_USER,[m
+       pass: process.env.SMTP_PASS,[m
+     },[m
+[32m+[m[32m    connectionTimeout: 10000,[m
+[32m+[m[32m    greetingTimeout: 10000,[m
+[32m+[m[32m    socketTimeout: 15000,[m
+   });[m
+ [m
+[32m+[m[32m  await transporter.verify();[m
+[32m+[m[32m  console.log("SMTP connection verified.");[m
+[32m+[m
+   const businessEmail = process.env.BUSINESS_EMAIL;[m
+   const businessName = process.env.BUSINESS_NAME || "Statewide Cleaning, Inc.";[m
+ [m
+[36m@@ -882,7 +890,7 @@[m [mapp.post("/api/book", async (req, res) => {[m
+ };[m
+ [m
+ setImmediate(async () => {[m
+[31m-  console.log("Starting background booking tasks...");[m
+[32m+[m[32m  console.log("BACKGROUND ORDER CHECK - SHEETS FIRST");[m
+ [m
+   const emailPayload = {[m
+     firstName,[m
+[36m@@ -903,25 +911,19 @@[m [msetImmediate(async () => {[m
+   };[m
+ [m
+   try {[m
+[31m-    await sendEmailsSMTP(emailPayload);[m
+[31m-    console.log("smtp emails succeeded.");[m
+[32m+[m[32m    console.log("STEP 1 - before sheets");[m
+[32m+[m[32m    console.log("Sheets env check:", {[m
+[32m+[m[32m      GOOGLE_SHEET_ID: process.env.GOOGLE_SHEET_ID,[m
+[32m+[m[32m    });[m
+[32m+[m[32m    await appendBookingToSheet(bookingData);[m
+[32m+[m[32m    console.log("append to sheet succeeded.");[m
+   } catch (error) {[m
+[31m-    console.error("smtp emails failed:", error?.message || error);[m
+[32m+[m[32m    console.error("append to sheet failed:", error?.message || error);[m
+     if (error?.stack) console.error(error.stack);[m
+   }[m
+ [m
+   try {[m
+[31m-  console.log("Sheets env check:", {[m
+[31m-    GOOGLE_SHEET_ID: process.env.GOOGLE_SHEET_ID,[m
+[31m-  });[m
+[31m-  await appendBookingToSheet(bookingData);[m
+[31m-  console.log("append to sheet succeeded.");[m
+[31m-} catch (error) {[m
+[31m-  console.error("append to sheet failed:", error?.message || error);[m
+[31m-  if (error?.stack) console.error(error.stack);[m
+[31m-}[m
+[31m-[m
+[31m-  try {[m
+[32m+[m[32m    console.log("STEP 2 - before calendar");[m
+     await createCalendarEvent(bookingData);[m
+     console.log("create calendar event succeeded.");[m
+   } catch (error) {[m
+[36m@@ -929,6 +931,20 @@[m [msetImmediate(async () => {[m
+     if (error?.stack) console.error(error.stack);[m
+   }[m
+ [m
+[32m+[m[32m  try {[m
+[32m+[m[32m    console.log("STEP 3 - before email");[m
+[32m+[m[32m    await Promise.race([[m
+[32m+[m[32m      sendEmailsSMTP(emailPayload),[m
+[32m+[m[32m      new Promise((_, reject) =>[m
+[32m+[m[32m        setTimeout(() => reject(new Error("SMTP timeout after 15 seconds")), 15000)[m
+[32m+[m[32m      ),[m
+[32m+[m[32m    ]);[m
+[32m+[m[32m    console.log("smtp emails succeeded.");[m
+[32m+[m[32m  } catch (error) {[m
+[32m+[m[32m    console.error("smtp emails failed:", error?.message || error);[m
+[32m+[m[32m    if (error?.stack) console.error(error.stack);[m
+[32m+[m[32m  }[m
+[32m+[m
+   console.log("Background booking tasks finished.");[m
+ });[m
+ [m

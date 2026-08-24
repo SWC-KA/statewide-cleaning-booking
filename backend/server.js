@@ -344,23 +344,56 @@ async function geocodeAddress(address, city = "", zip = "") {
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
 
   if (!apiKey) {
-    throw new Error("GOOGLE_MAPS_API_KEY is missing from .env");
+    throw new Error("GOOGLE_MAPS_API_KEY is missing from Render environment variables");
   }
 
-  const parts = [address, city, zip]
+  const parts = [
+    address,
+    city,
+    "MA",
+    zip,
+    "USA"
+  ]
     .map((part) => (part || "").trim())
     .filter(Boolean);
 
-  const fullAddress = encodeURIComponent(parts.join(", "));
-  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${fullAddress}&key=${apiKey}`;
+  const fullAddress = parts.join(", ");
+
+  console.log("Geocoding address:", fullAddress);
+
+  const url =
+    `https://maps.googleapis.com/maps/api/geocode/json` +
+    `?address=${encodeURIComponent(fullAddress)}` +
+    `&key=${encodeURIComponent(apiKey)}`;
 
   const result = await fetchJson(url);
 
+  console.log("Google Geocoding status:", result.status);
+
+  if (result.error_message) {
+    console.error("Google Geocoding error:", result.error_message);
+  }
+
+  if (result.status !== "OK") {
+    console.error("FULL GEOCODING RESPONSE:", JSON.stringify(result, null, 2));
+
+    throw new Error(
+      `Unable to geocode address. Google status: ${result.status}` +
+      (result.error_message ? ` - ${result.error_message}` : "")
+    );
+  }
+
   if (!result.results || result.results.length === 0) {
-    throw new Error("Unable to geocode address.");
+    throw new Error("Unable to geocode address. Google returned no results.");
   }
 
   const location = result.results[0].geometry.location;
+
+  console.log("Geocoding successful:", {
+    formattedAddress: result.results[0].formatted_address,
+    lat: location.lat,
+    lng: location.lng,
+  });
 
   return {
     lat: location.lat,

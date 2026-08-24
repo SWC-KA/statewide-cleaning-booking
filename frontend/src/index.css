@@ -532,3 +532,20 @@ button, input, select, textarea { font: inherit; }
     width: 100%;
   }
 }
+.request-specific-date-box {
+  margin-bottom: 12px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.helper-text {
+  display: block;
+  margin-top: 6px;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
