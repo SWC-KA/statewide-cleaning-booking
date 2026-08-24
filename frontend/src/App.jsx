@@ -2046,10 +2046,10 @@ function getSlotLabel(window) {
   </button>
 
   {!canSubmit && !formError && (
-    <p className="form-help">
-      Complete the required customer information before continuing.
-    </p>
-  )}
+  <p className="form-help form-help-error">
+    Please complete all required fields before continuing.
+  </p>
+)}
 
 </div>
           </div>
