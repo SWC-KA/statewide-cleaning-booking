@@ -381,6 +381,8 @@ export default function App() {
   const [bestFitLoading, setBestFitLoading] = useState(false);
   const [bestFitError, setBestFitError] = useState("");
   const [slotStatus, setSlotStatus] = useState([]);
+  const [fieldErrors, setFieldErrors] = useState({});
+const [formError, setFormError] = useState("");
   const [customer, setCustomer] = useState({
     firstName: "",
     lastName: "",
@@ -569,7 +571,72 @@ const [submitSuccess, setSubmitSuccess] = useState(false);
 const reviewRef = useRef(null);
 
 function handleReviewClick() {
-  if (!canSubmit || loading) return;
+  if (loading) return;
+
+  const errors = {};
+
+  if (!customer.firstName.trim()) {
+    errors.firstName = "First name is required.";
+  }
+
+  if (!customer.lastName.trim()) {
+    errors.lastName = "Last name is required.";
+  }
+
+  if (!customer.phone.trim()) {
+    errors.phone = "Phone number is required.";
+  } else if (!phoneValid) {
+    errors.phone = "Please enter a valid 10-digit phone number.";
+  }
+
+  if (!customer.email.trim()) {
+    errors.email = "Email address is required.";
+  } else if (!emailValid) {
+    errors.email = "Please enter a valid email address.";
+  }
+
+  if (!customer.address.trim()) {
+    errors.address = "Street address is required.";
+  } else if (customer.address.trim().length < 6) {
+    errors.address = "Please enter a more complete street address.";
+  }
+
+  if (!customer.city.trim()) {
+    errors.city = "City is required.";
+  } else if (customer.city.trim().length < 2) {
+    errors.city = "Please enter a valid city.";
+  }
+
+  if (!customer.zip.trim()) {
+    errors.zip = "ZIP code is required.";
+  } else if (!/^\d{5}(-\d{4})?$/.test(customer.zip.trim())) {
+    errors.zip = "Please enter a valid ZIP code.";
+  }
+
+  if (useSpecificDateRequest && !specificDate.trim()) {
+    errors.specificDate = "Please select the requested date.";
+  }
+
+  setFieldErrors(errors);
+
+  if (Object.keys(errors).length > 0) {
+    setFormError("Please complete the highlighted fields before continuing.");
+
+    const firstError = Object.keys(errors)[0];
+
+    setTimeout(() => {
+      document
+        .querySelector(`[name="${firstError}"]`)
+        ?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+    }, 100);
+
+    return;
+  }
+
+  setFormError("");
   setShowReview(true);
 }
 
@@ -828,11 +895,9 @@ const hasAtLeastOneService = selectedServices.length > 0;
 const canSubmit =
   customer.firstName.trim() &&
   customer.lastName.trim() &&
-  customer.phone.trim() &&
-  customer.email.trim() &&
-  customer.address.trim() &&
-  customer.city.trim() &&
-  customer.zip.trim() &&
+  phoneValid &&
+  emailValid &&
+  addressValid &&
   (
     useSpecificDateRequest
       ? specificDate.trim()
@@ -859,7 +924,12 @@ useEffect(() => {
   }
 
   fetchSlotStatus(selectedDate);
-}, [selectedDate]);
+}, [
+  selectedDate,
+  customer.address,
+  customer.city,
+  customer.zip
+]);
 
  useEffect(() => {
   if (!addressValid) {
@@ -1537,38 +1607,86 @@ function getSlotLabel(window) {
 
             <div className="customer-grid">
   <Field label="First name">
+  <>
     <input
-      className="input"
+      name="firstName"
+      className={`input ${fieldErrors.firstName ? "input-error" : ""}`}
       value={customer.firstName}
-      onChange={(e) =>
-        setCustomer({ ...customer, firstName: e.target.value })
-      }
+      onChange={(e) => {
+        setCustomer({ ...customer, firstName: e.target.value });
+
+        if (fieldErrors.firstName) {
+          setFieldErrors((prev) => ({
+            ...prev,
+            firstName: "",
+          }));
+        }
+      }}
     />
-  </Field>
+
+    {fieldErrors.firstName && (
+      <small className="field-error">
+        {fieldErrors.firstName}
+      </small>
+    )}
+  </>
+</Field>
 
   <Field label="Last name">
+  <>
     <input
-      className="input"
+      name="lastName"
+      className={`input ${fieldErrors.lastName ? "input-error" : ""}`}
       value={customer.lastName}
-      onChange={(e) =>
-        setCustomer({ ...customer, lastName: e.target.value })
-      }
+      onChange={(e) => {
+        setCustomer({ ...customer, lastName: e.target.value });
+
+        if (fieldErrors.lastName) {
+          setFieldErrors((prev) => ({
+            ...prev,
+            lastName: "",
+          }));
+        }
+      }}
     />
-  </Field>
+
+    {fieldErrors.lastName && (
+      <small className="field-error">
+        {fieldErrors.lastName}
+      </small>
+    )}
+  </>
+</Field>
 
   <Field label="Phone">
   <>
     <input
-      className="input"
+      name="phone"
+      className={`input ${fieldErrors.phone ? "input-error" : ""}`}
       value={customer.phone}
-      onChange={(e) =>
-        setCustomer({ ...customer, phone: e.target.value })
-      }
+      onChange={(e) => {
+        setCustomer({ ...customer, phone: e.target.value });
+
+        if (fieldErrors.phone) {
+          setFieldErrors((prev) => ({
+            ...prev,
+            phone: "",
+          }));
+        }
+      }}
     />
-    {customer.phone && !phoneValid && (
-      <small style={{ color: "#dc2626", marginTop: "6px", display: "block" }}>
-        Please enter a valid 10-digit phone number.
+
+    {fieldErrors.phone ? (
+      <small className="field-error">
+        {fieldErrors.phone}
       </small>
+    ) : (
+      customer.phone &&
+      !phoneValid && (
+        <small className="field-error">
+          Please enter a valid 10-digit phone number.
+        </small>
+      )
     )}
   </>
 </Field>
@@ -1576,16 +1694,33 @@ function getSlotLabel(window) {
 <Field label="Email">
   <>
     <input
-      className="input"
+      name="email"
+      type="email"
+      className={`input ${fieldErrors.email ? "input-error" : ""}`}
       value={customer.email}
-      onChange={(e) =>
-        setCustomer({ ...customer, email: e.target.value })
-      }
+      onChange={(e) => {
+        setCustomer({ ...customer, email: e.target.value });
+
+        if (fieldErrors.email) {
+          setFieldErrors((prev) => ({
+            ...prev,
+            email: "",
+          }));
+        }
+      }}
     />
-    {customer.email && !emailValid && (
-      <small style={{ color: "#dc2626", marginTop: "6px", display: "block" }}>
-        Please enter a valid email address.
+
+    {fieldErrors.email ? (
+      <small className="field-error">
+        {fieldErrors.email}
       </small>
+    ) : (
+      customer.email &&
+      !emailValid && (
+        <small className="field-error">
+          Please enter a valid email address.
+        </small>
+      )
     )}
   </>
 </Field>
@@ -1608,16 +1743,32 @@ function getSlotLabel(window) {
 <Field label="Street address" className="span-2">
   <>
     <input
-      className="input"
+      name="address"
+      className={`input ${fieldErrors.address ? "input-error" : ""}`}
       value={customer.address}
-      onChange={(e) =>
-        setCustomer({ ...customer, address: e.target.value })
-      }
+      onChange={(e) => {
+        setCustomer({ ...customer, address: e.target.value });
+
+        if (fieldErrors.address) {
+          setFieldErrors((prev) => ({
+            ...prev,
+            address: "",
+          }));
+        }
+      }}
     />
-    {customer.address && customer.address.trim().length < 6 && (
-      <small style={{ color: "#dc2626", marginTop: "6px", display: "block" }}>
-        Please enter a more complete street address.
+
+    {fieldErrors.address ? (
+      <small className="field-error">
+        {fieldErrors.address}
       </small>
+    ) : (
+      customer.address &&
+      customer.address.trim().length < 6 && (
+        <small className="field-error">
+          Please enter a more complete street address.
+        </small>
+      )
     )}
   </>
 </Field>
@@ -1625,16 +1776,32 @@ function getSlotLabel(window) {
 <Field label="City">
   <>
     <input
-      className="input"
+      name="city"
+      className={`input ${fieldErrors.city ? "input-error" : ""}`}
       value={customer.city}
-      onChange={(e) =>
-        setCustomer({ ...customer, city: e.target.value })
-      }
+      onChange={(e) => {
+        setCustomer({ ...customer, city: e.target.value });
+
+        if (fieldErrors.city) {
+          setFieldErrors((prev) => ({
+            ...prev,
+            city: "",
+          }));
+        }
+      }}
     />
-    {customer.city && customer.city.trim().length < 2 && (
-      <small style={{ color: "#dc2626", marginTop: "6px", display: "block" }}>
-        Please enter a valid city.
+
+    {fieldErrors.city ? (
+      <small className="field-error">
+        {fieldErrors.city}
       </small>
+    ) : (
+      customer.city &&
+      customer.city.trim().length < 2 && (
+        <small className="field-error">
+          Please enter a valid city.
+        </small>
+      )
     )}
   </>
 </Field>
@@ -1642,16 +1809,32 @@ function getSlotLabel(window) {
 <Field label="ZIP code">
   <>
     <input
-      className="input"
+      name="zip"
+      className={`input ${fieldErrors.zip ? "input-error" : ""}`}
       value={customer.zip}
-      onChange={(e) =>
-        setCustomer({ ...customer, zip: e.target.value })
-      }
+      onChange={(e) => {
+        setCustomer({ ...customer, zip: e.target.value });
+
+        if (fieldErrors.zip) {
+          setFieldErrors((prev) => ({
+            ...prev,
+            zip: "",
+          }));
+        }
+      }}
     />
-    {customer.zip && !/^\d{5}(-\d{4})?$/.test(customer.zip.trim()) && (
-      <small style={{ color: "#dc2626", marginTop: "6px", display: "block" }}>
-        Please enter a valid ZIP code.
+
+    {fieldErrors.zip ? (
+      <small className="field-error">
+        {fieldErrors.zip}
       </small>
+    ) : (
+      customer.zip &&
+      !/^\d{5}(-\d{4})?$/.test(customer.zip.trim()) && (
+        <small className="field-error">
+          Please enter a valid ZIP code.
+        </small>
+      )
     )}
   </>
 </Field>
@@ -1789,13 +1972,31 @@ function getSlotLabel(window) {
 ) : (
   <>
     <Field label="Requested specific date">
-      <input
-        className="input"
-        type="date"
-        min={getTodayLocalDateString()}
-        value={specificDate}
-        onChange={(e) => setSpecificDate(e.target.value)}
-      />
+      <>
+  <input
+    name="specificDate"
+    className={`input ${fieldErrors.specificDate ? "input-error" : ""}`}
+    type="date"
+    min={getTodayLocalDateString()}
+    value={specificDate}
+    onChange={(e) => {
+      setSpecificDate(e.target.value);
+
+      if (fieldErrors.specificDate) {
+        setFieldErrors((prev) => ({
+          ...prev,
+          specificDate: "",
+        }));
+      }
+    }}
+  />
+
+  {fieldErrors.specificDate && (
+    <small className="field-error">
+      {fieldErrors.specificDate}
+    </small>
+  )}
+</>
     </Field>
 
     <Field label="Preferred time for requested date">
@@ -1828,20 +2029,28 @@ function getSlotLabel(window) {
 </Field>
 </div>
 <div className="review-action-wrap">
+
+  {formError && (
+    <div className="form-error">
+      {formError}
+    </div>
+  )}
+
   <button
     type="button"
     className="btn btn-primary btn-review"
     onClick={handleReviewClick}
-    disabled={!canSubmit || loading}
+    disabled={loading}
   >
     {loading ? "Sending..." : "Review Booking Request"}
   </button>
 
-  {!canSubmit && (
+  {!canSubmit && !formError && (
     <p className="form-help">
-      Please complete all required fields and enter a valid email, phone number, and address before submitting.
+      Complete the required customer information before continuing.
     </p>
   )}
+
 </div>
           </div>
 
